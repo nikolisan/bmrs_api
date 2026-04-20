@@ -1,4 +1,8 @@
+from typing import Any
+
 import httpx
+import asyncio
+import random
 from loguru import logger
 
 from src.api.models import SystemPriceRecord
@@ -24,6 +28,48 @@ class ApiClient:
         self._base: float = retry_base
         self._cap: float = retry_cap
     
+
+    async def _get_with_retry(self, endpoint: str, params: dict) -> dict[str, Any]:
+        """
+        Performs an asynchronous GET request with exponential backoff.
+
+        Args:
+            endpoint: API endpoint to append to the base URL.
+            params: Dictionary of query parameters.
+
+        Returns:
+            The parsed JSON response body as a dictionary.
+
+        Raises:
+            httpx.RequestError: For network-level failures.
+            httpx.HTTPStatusError: For non-retryable HTTP error codes.
+            RuntimeError: If the maximum number of retry attempts is exceeded.
+        """
+        url = f"{self.BASE_URL}{endpoint}"
+        
+        for attempt in range(self._max_attempts):
+            delay: float = min(self._cap, self._base * (2 ** (attempt))) + random.random()
+            try:
+                resp = await self._client.get(url, params=params, timeout=self._timeout)
+
+                if resp.status_code in self.RETRY_STATUS:
+                    logger.warning(f"{endpoint} attempt: {attempt+1}/{self._max_attempts}: Status code: {resp.status_code}, retry in: {delay:.1f} seconds")
+
+                    await asyncio.sleep(delay)
+                    continue
+
+                resp.raise_for_status()
+                return resp.json()
+            
+            except httpx.RequestError as err:
+                logger.warning(f"{endpoint} attempt {attempt+1}/{self._max_attempts}: {type(err).__name__}")
+                if attempt < self._max_attempts - 1:
+                    await asyncio.sleep(delay)
+
+        raise RuntimeError(
+            f"{endpoint}: exhausted {self._max_attempts} attempts"
+        )
+
 
     async def fetch_system_prices(self, date: str) -> list[SystemPriceRecord]:
         endpoint = f"/balancing/settlement/system-prices/{date}"
