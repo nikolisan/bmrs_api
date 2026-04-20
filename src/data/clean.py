@@ -41,10 +41,22 @@ def create_system_price_dataframe(settlement_periods: list[SystemPriceRecord]) -
     if len(df) > _expected:
         raise ValueError(f"{_date}: Expected {_expected} SP, got {len(df)}.")
     
-    # Fill missing price values
-    df["is_interpolated"] = df[["systemSellPrice", "systemBuyPrice", "netImbalanceVolume"]].isna().any(axis=1)
-    df["systemSellPrice"] = df["systemSellPrice"].ffill().bfill()
-    df["systemBuyPrice"] = df["systemBuyPrice"].ffill().bfill()
-    df["netImbalanceVolume"] = df["systemBuyPrice"].ffill().bfill()
+    if len(df) < _expected:
+        index_periods = pd.RangeIndex(1, _expected + 1, name="settlementPeriod")
+        missing = sorted(set(index_periods) -  set(df.index))
+        df = df.reindex(index_periods)
+        for missing_sp in missing:
+            logger.warning(f"{_date}: SP{missing_sp} is missing. Dataset will be interpolated.")
+    
+    # Fill missing price and volume values
+    cols_to_fill = ["systemSellPrice", "systemBuyPrice", "netImbalanceVolume"]
+    df["is_interpolated"] = df[cols_to_fill].isna().any(axis=1)
+    
+    num_missing = df["is_interpolated"].sum()
+    if num_missing > 0:
+        logger.warning(f"{_date}: Interpolating {num_missing}/{_expected} periods.")
+
+    df[cols_to_fill] = df[cols_to_fill].interpolate(method='linear')
+    df[cols_to_fill] = df[cols_to_fill].bfill().ffill()
 
     return df
