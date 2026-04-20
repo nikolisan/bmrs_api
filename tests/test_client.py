@@ -54,7 +54,7 @@ async def test_fetch_invalid_json_raises(httpx_mock, client):
         url=f"{BASE}/balancing/settlement/system-prices/2024-02-01?format=json",
         content=b"not json",
     )
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         await client.fetch_system_prices("2024-02-01")
 
 

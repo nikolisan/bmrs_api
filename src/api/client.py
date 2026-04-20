@@ -67,6 +67,10 @@ class ApiClient:
                 resp.raise_for_status()
                 return resp.json()
             
+            except JSONDecodeError as json_error:
+                logger.error(f"{endpoint}: Invalid response format. Not JSON: Body={resp.text[:20]!r}")
+                raise ValueError(f"{endpoint}: Invalid response format")
+            
             except httpx.RequestError as err:
                 logger.error(f"{endpoint} attempt {attempt+1}/{self._max_attempts}: {type(err).__name__}")
                 if attempt < self._max_attempts - 1:
