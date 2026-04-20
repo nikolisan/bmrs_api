@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,10 @@ async def run_daily_report(settlement_date: str, output_dir: Path = Path("report
     scatter_fig.savefig(scatter_png_path, dpi=150, bbox_inches="tight")
     plt.close(main_fig)
     plt.close(scatter_fig)
+
+    metrics_path = out / "metrics.json"
+    with metrics_path.open("w") as f:
+        json.dump(metrics, f, indent=2, default=str)
 
     print_stdout_summary(metrics, out)
     return out

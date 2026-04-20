@@ -7,7 +7,7 @@ Clone the git repository
 ```bash
 git clone https://github.com/nikolisan/bmrs_api.git && cd bmrs_api
 ```
-### Option A — uv
+### Option A -- uv
 
 ```bash
 uv sync
@@ -17,7 +17,7 @@ uv run python main.py 2026-02-01 --output-dir reports --log-level DEBUG
 uv run python main.py --help        # help
 ```
 
-### Option B — venv + pip
+### Option B -- venv + pip
 
 1. Create virtual environment
 > Tested with Python >= 3.12
@@ -39,8 +39,14 @@ python main.py --help               # help
 ```
 
 **Outputs go to `reports/<date>/`**:
-- `daily_summary.png` — stacked: price, NIV, cumulative cashflow
-- `price_correlation.png` — NIV vs System Price scatter
+`daily_summary.png`
+   - 3-panel stack: System Price, NIV with IIV overlay, cumulative imbalance cost
+   - Comparison of Price, Volume and Cost on common axis.
+   - **Key**: Long/Short system color-coding & price response
+
+`price_correlation.png`: NIV vs System Price scatter
+   - Correlation chart of NIV and Price
+
 
 ## Tests
 
@@ -58,18 +64,35 @@ pytest              # venv (activated)
 2. **Validate** — Pydantic v2 models (`SystemPriceRecord`, `ImbalanceRecord`) type the fields that matter. `extra="allow"` lets unknown fields pass through.
 3. **Clean / align** — both datasets are deduplicated (keep latest by `createdDateTime` / `publishTime`), indexed by `settlementPeriod`, and reindexed to the expected period count for the day. Missing system-price periods are linearly interpolated and flagged.
 4. **Merge** — prices + IIV merged on the `settlementPeriod` index; price columns stay intact, IIV conflicts suffixed `_iiv`.
-5. **Metrics** — daily cashflow (BSC Section T 4.7: `CAEIaj = -NIV * SSP`), gross turnover, unit rate, long/short ratios.
+5. **Metrics** — daily imbalance cost (BSC Section T 4.7: `CAEIaj = -NIV * SSP`, summed over all SPs), gross turnover, unit rate (`turnover / Σ|NIV|`), long/short ratios.
 6. **Render** — matplotlib figures saved as PNGs.
 
 ## Assumptions
 
-- **Total Cashflow sign convention**: BSC Section T 4.7 with NIV assumed aggregated across all accounts.
+- **Total imbalance cost**: defined per BSC Section T 4.7, `CAEIaj = -NIV * SSP` summed across SPs, with NIV assumed aggregated across all accounts. Positive = aggregate parties net receive, negative = net pay.
+- **Unit rate**: `Σ(|NIV| * SSP) / Σ|NIV|` — absolute-volume-weighted average price. Reported as NaN when `Σ|NIV| = 0`.
 - **DST days** handled by `zoneinfo` with `ZoneInfo.no_cache`: returns 46 periods on last Sunday of March, 50 on last Sunday of October, 48 otherwise.
-- **IIV boundary**: uses records as returned by IMBALNGC; `dataset` and `boundary` columns dropped before merge. National-level boundary assumed `N` in the API response. The aggregated IIV identification from the endpoint is taken on trust without cross-validation against transmission-zone aggregation.
-- **Price for cashflow**: uses `systemSellPrice` only. BSC uses SSP for aggregate settlement under the single-price regime.
-- **Missing periods**: interpolated linearly for price/NIV; IIV missing left as `NaN` (not interpolated).
-- **Too many periods**: raises `ValueError` — treated as data integrity failure rather than silent truncation.
+- **IIV boundary**: IMBALNGC is a **day-ahead forecast** — records with settlementDate D are published on D-1. Client queries the `publishDateTime` window of D-1 and filters on `settlementDate == D` downstream. Boundary hardcoded to `N` (national); `dataset` and `boundary` columns dropped pre-merge. National identification trusted, not cross-validated against zone aggregation.
+- **Price for imbalance cost**: uses `systemSellPrice` only (single-price BSC regime).
+- **Missing periods**: interpolated linearly for price/NIV and flagged via `is_interpolated`; IIV missing left as `NaN` (no interpolation).
+- **Too many periods**: raises `ValueError` — data integrity failure, not silently truncated.
 - **Timezone**: default date is "yesterday" in `Europe/London`.
+
+## Scalability
+
+The codebase is structured so each of the four layers can grow independently without rewrites:
+
+- **More data sources** - `ApiClient` concentrates HTTP concerns (retry, backoff, validation); adding a new dataset is one method returning a validated Pydantic list. Parallel fetches in `run_daily_report` use `asyncio.gather` and scale to N endpoints by adding tasks.
+
+- **More metrics** - `src/data/metrics.py` is a module of pure functions over a `DataFrame`. New metrics plug into `compute_daily_metrics`. More metric functions can be introduced.
+
+- **More visualisations** - `src/viz/charts.py` returns `Figure` objects decoupled from IO.
+
+- **Multi-day** - `run_daily_report` takes a single date. A multi-day runner can wrap it in `asyncio.gather` over a date range.
+
+- **Storage** - currently writes PNGs to disk. Metrics return a plain dict → easy swap to Parquet/CSV append or a DB table for historical analytics.
+
+- **Reporting** - currently handled by producing graphs and `stdout` messages. The module can be extended to an interactive dashboard or automatic pdf report generation.
 
 ## Project Structure
 
@@ -80,10 +103,11 @@ pytest              # venv (activated)
 | `src/api/client.py` | Async BMRS client. Retry/backoff, 429 `retryAfter` handling. Exposes `fetch_system_prices`, `fetch_historical_imbalance`. |
 | `src/api/models.py` | Pydantic v2 validation models: `SystemPriceRecord` (DISEBSP), `ImbalanceRecord` (IMBALNGC). |
 | `src/data/clean.py` | Response cleaning and storing: `_expected_periods` (DST-aware period count), `create_system_price_dataframe` (dedup + interpolate), `create_IIV_dataframe` (dedup + reindex), `merge_dataframes` (index-only merge). |
-| `src/data/metrics.py` | `compute_cashflow` (BSC T 4.7), `compute_daily_metrics` (turnover, unit rate, long/short share, interpolated periods). |
+| `src/data/metrics.py` | `compute_imbalance_cost` (BSC T 4.7), `compute_daily_metrics` (turnover, unit rate, long/short share, interpolated periods). |
 | `src/viz/charts.py` | matplotlib figures |
 | `tests/test_client.py` | ApiClient tests |
 | `tests/test_clean.py` | Response cleaning and storing tests |
+| `tests/test_metrics.py` | Imbalance cost / unit rate / long-short calculation tests. |
 | `tests/test_models.py` | Pydantic model validation tests. |
 | `tests/march_bst.json` | Fixture: real API response for March BST day (46 periods). |
 | `tests/october_bst.json` | Fixture: real API response for October BST day (50 periods). |
