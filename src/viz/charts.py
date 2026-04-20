@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.figure import Figure
 
-from src.data.metrics import compute_cashflow
+from src.data.metrics import compute_imbalance_cost
 
 GREEN = "#2ca02c"
 RED = "#d62728"
@@ -56,8 +56,8 @@ def build_report_figure(df: pd.DataFrame, metrics: dict[str, Any]) -> Figure:
         )
         ax_niv.legend(loc="upper right")
 
-    ax_cash.plot(x, compute_cashflow(df).cumsum(), label="Cumulative £")
-    ax_cash.set_title("Cumulative Cashflow (£)")
+    ax_cash.plot(x, compute_imbalance_cost(df).cumsum(), label="Cumulative £")
+    ax_cash.set_title("Cumulative Imbalance Cost (£)")
     ax_cash.set_ylabel("£")
     ax_cash.set_xlabel("Settlement Period")
     ax_cash.grid(True, alpha=0.3)

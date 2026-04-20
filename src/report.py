@@ -15,7 +15,7 @@ from src.viz.charts import build_report_figure, build_price_scatter
 
 def print_stdout_summary(metrics: dict[str, Any], out_path: Path) -> None:
     print(f"=== Imbalance Report — {metrics['settlement_date']} ===")
-    print(f"Signed cashflow      : £{metrics['total_cashflow']:,.2f}")
+    print(f"Imbalance cost       : £{metrics['total_imbalance_cost']:,.2f}")
     print(f"Absolute turnover    : £{metrics['total_turnover']:,.2f}")
     print(f"Unit rate            : £{metrics['unit_rate_gbp_per_mwh']:,.2f}/MWh")
     print(f"Periods long / short : {metrics['pct_periods_long']:.1f}% / {metrics['pct_periods_short']:.1f}%")

@@ -4,12 +4,15 @@ import pandas as pd
 from datetime import date
 
 
-def compute_cashflow(df: pd.DataFrame) -> pd.Series:
+def compute_imbalance_cost(df: pd.DataFrame) -> pd.Series:
     """
-    Computes the cashflow for each period in accordance to BSC Section T 4.7.
-    Main assumption is that the netImbalanceVolume is aggregated for all accounts.
+    Computes the per-period imbalance cost in accordance with BSC Section T 4.7.
+
+    Main assumption: the netImbalanceVolume is aggregated for all accounts.
      - CAEIaj = -QAEIaj * SSPj
      - TCEIj = ΣaCAEIaj
+
+    Sign convention: positive = aggregate parties net receive, negative = net pay.
     """
     return -df["netImbalanceVolume"] * df["systemSellPrice"]
 
@@ -18,7 +21,7 @@ def compute_daily_metrics(df: pd. DataFrame, settlement_date: date) -> dict[str,
     """
     Returns basic metrics for the day.
     """
-    cashflow = compute_cashflow(df)
+    cost = compute_imbalance_cost(df)
     turnover = (df["netImbalanceVolume"].abs() * df["systemSellPrice"]).sum()
     total_niv = df["netImbalanceVolume"].abs().sum()
     unit_rate = (float("nan") if total_niv == 0 else turnover / total_niv)
@@ -33,7 +36,7 @@ def compute_daily_metrics(df: pd. DataFrame, settlement_date: date) -> dict[str,
     return {
         "settlement_date": settlement_date,
         "total_periods": len(df),
-        "total_cashflow": float(cashflow.sum()),
+        "total_imbalance_cost": float(cost.sum()),
         "total_turnover": float(turnover),
         "unit_rate_gbp_per_mwh": unit_rate,
         "pct_periods_long": float(system_long.mean()*100),
