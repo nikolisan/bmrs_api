@@ -1,5 +1,6 @@
 import httpx
 import pytest
+import time
 from pydantic import ValidationError
 from src.api.client import ApiClient
 
@@ -83,3 +84,21 @@ async def test_fetch_no_retry_on_404(httpx_mock, client):
     )
     with pytest.raises(httpx.HTTPStatusError):
         await client.fetch_system_prices("2024-02-01")
+
+# Rate limiting retry
+
+async def test_fetch_retry_429(httpx_mock, client):
+    url = f"{BASE}/balancing/settlement/system-prices/2024-02-01?format=json"
+    httpx_mock.add_response(
+        url=f"{BASE}/balancing/settlement/system-prices/2024-02-01?format=json",
+        status_code=429,
+        json = {"error": {"retryAfter": 1}}
+    )
+    httpx_mock.add_response(url=url, status_code=200, json={"data": []})
+
+    start_time = time.perf_counter()
+    response = await client.fetch_system_prices("2024-02-01")
+    end_time = time.perf_counter()
+
+    assert (end_time - start_time) >= 2
+    assert len(httpx_mock.get_requests()) == 2

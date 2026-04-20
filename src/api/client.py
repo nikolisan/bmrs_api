@@ -3,6 +3,7 @@ from typing import Any
 import httpx
 import asyncio
 import random
+from json import JSONDecodeError
 from loguru import logger
 
 from src.api.models import SystemPriceRecord
@@ -31,7 +32,7 @@ class ApiClient:
 
     async def _get_with_retry(self, endpoint: str, params: dict) -> dict[str, Any]:
         """
-        Performs an asynchronous GET request with exponential backoff.
+        Performs an asynchronous GET request with exponential backoff and rate-limiting retrying.
 
         Args:
             endpoint: API endpoint to append to the base URL.
@@ -53,6 +54,11 @@ class ApiClient:
                 resp = await self._client.get(url, params=params, timeout=self._timeout)
 
                 if resp.status_code in self.RETRY_STATUS:
+                    if resp.status_code == 429:
+                        rate_limit_delay = resp.json().get("error", {}).get("retryAfter")
+                        if rate_limit_delay:
+                            delay = float(rate_limit_delay) + 1
+
                     logger.warning(f"{endpoint} attempt: {attempt+1}/{self._max_attempts}: Status code: {resp.status_code}, retry in: {delay:.1f} seconds")
 
                     await asyncio.sleep(delay)
@@ -62,7 +68,7 @@ class ApiClient:
                 return resp.json()
             
             except httpx.RequestError as err:
-                logger.warning(f"{endpoint} attempt {attempt+1}/{self._max_attempts}: {type(err).__name__}")
+                logger.error(f"{endpoint} attempt {attempt+1}/{self._max_attempts}: {type(err).__name__}")
                 if attempt < self._max_attempts - 1:
                     await asyncio.sleep(delay)
 
