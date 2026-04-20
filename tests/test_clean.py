@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.api.models import SystemPriceRecord
+from src.api.models import SystemPriceRecord, ImbalanceRecord
 from src.data.clean import _expected_periods, create_system_price_dataframe
 
 FIXTURES = Path(__file__).parent
@@ -28,6 +28,19 @@ def _make_record(**overrides) -> SystemPriceRecord:
     }
     base.update(overrides)
     return SystemPriceRecord.model_validate(base)
+
+
+def _make_iiv_record(**overrides) -> ImbalanceRecord:
+    base = {
+        "settlementDate": date(2026, 2, 1),
+        "settlementPeriod": 1,
+        "startTime": datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc),
+        "publishTime": datetime(2026, 2, 1, 0, 15, tzinfo=timezone.utc),
+        "imbalance": 500.0,
+        "boundary": "N",
+    }
+    base.update(overrides)
+    return ImbalanceRecord.model_validate(base)
 
 
 # Test period count
@@ -82,3 +95,17 @@ def test_october_bst_50_periods():
     records = _load_records("october_bst.json")
     df = create_system_price_dataframe(records)
     assert len(df) == 50
+
+
+# IIV Testing
+
+def test_iiv_deduplication_keeps_latest():
+    records = [_make_record(settlementPeriod=sp) for sp in range(1, 49)]
+    records.append(_make_record(
+        settlementPeriod=1,
+        systemSellPrice=99.0,
+        systemBuyPrice=99.0,
+        publishTime=datetime(2026, 2, 1, 3, 0, tzinfo=timezone.utc),
+    ))
+    df = create_system_price_dataframe(records)
+    assert df.loc[1, "systemSellPrice"] == 99.0

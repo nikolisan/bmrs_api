@@ -3,10 +3,11 @@ from typing import Any
 import httpx
 import asyncio
 import random
+from datetime import datetime, timedelta
 from json import JSONDecodeError
 from loguru import logger
 
-from src.api.models import SystemPriceRecord
+from src.api.models import SystemPriceRecord, ImbalanceRecord
 
 
 logger.add("api_errors.log", rotation="10 MB", level="WARNING")
@@ -85,3 +86,31 @@ class ApiClient:
         endpoint = f"/balancing/settlement/system-prices/{date}"
         resp_json = await self._get_with_retry(endpoint, {"format": "json"})
         return [SystemPriceRecord.model_validate(sp) for sp in resp_json.get("data", [])]
+    
+
+    async def fetch_historical_imbalance(self, date: str) -> list[ImbalanceRecord]:
+        """
+        Function to fetch the IIV for the requested date.
+
+        Fetches the published data for the previous date, as the endpoint provides information for the day-ahed.
+        """
+        
+        endpoint = "/datasets/IMBALNGC"
+
+        _date: datetime = datetime.strptime("%Y-%m-%d")
+        fetch_date: datetime = _date - timedelta(days=1)
+        fetch_date_str: str = fetch_date.strftime("%Y-%m-%d")
+
+        start_date = f"{fetch_date_str}T00:00:00Z"
+        end_date = f"{fetch_date_str}T23:59:00Z"
+
+        params = {
+            "boundary": "N",
+            "publishDateTimeFrom": start_date,
+            "publishDateTimeTo": end_date,
+            "format": "json"
+        }
+
+        # Reuse the robust retry logic from the base class
+        resp_json = await self._get_with_retry("endpoint", params)
+        return [ImbalanceRecord.model_validate(item) for item in resp_json.get("data", [])]

@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from loguru import logger
 
-from src.api.models import SystemPriceRecord
+from src.api.models import SystemPriceRecord, ImbalanceRecord
 
 logger.add("data_clean.log", rotation="10 MB", level="WARNING")
 
@@ -15,6 +15,9 @@ def _expected_periods(settlement_date: datetime) -> int:
     Helper function to calculate the expected number of 30min periods in a day.
     Returns 48 for normal days, 46 for March and 48 October BST shift.
     """
+    if isinstance(settlement_date, str):
+        settlement_date = datetime.strptime("%Y-%m-%d")
+        
     start = datetime.combine(settlement_date, time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
     end = datetime.combine(settlement_date + timedelta(days=1), time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
     return int((end - start).total_seconds() // 1800)
@@ -74,3 +77,39 @@ def create_system_price_dataframe(settlement_periods: list[SystemPriceRecord]) -
     df[cols_to_fill] = df[cols_to_fill].bfill().ffill()
 
     return df
+
+
+def create_IIV_dataframe(records: list[ImbalanceRecord], target_date: str) -> pd.DataFrame:
+    if not records:
+        raise ValueError(f"No Imbalance Records provided.")
+
+    rows = [ImbalanceRecord.model_validate(item).model_dump() for item in records]
+    
+    df = pd.DataFrame(rows)
+
+    df = df[df['settlementDate'].astype(str) == target_date]
+    df = df.sort_values(by="publishTime", ascending=True)
+    df = df.drop_duplicates(subset=["settlementPeriod"], keep="last")
+    df = df.set_index("settlementPeriod")
+    df = df.sort_index()
+
+    _expected = _expected_periods(target_date)
+
+    if len(df) > _expected:
+        raise ValueError(f"{target_date}: Expected {_expected} SP, got {len(df)}.")
+    
+    if len(df) < _expected:
+        index_periods = pd.RangeIndex(1, _expected + 1, name="settlementPeriod")
+        missing = sorted(set(index_periods) -  set(df.index))
+        df = df.reindex(index_periods)
+        for missing_sp in missing:
+            logger.warning(f"{target_date}: SP{missing_sp} is missing.")
+
+    return df
+
+
+def merge_dataframes(prices_df: pd.DataFrame, iiv_df: pd.DataFrame) -> pd.DataFrame:
+    
+    merged_df = prices_df.join(iiv_df, how='left')
+    
+    return merged_df
