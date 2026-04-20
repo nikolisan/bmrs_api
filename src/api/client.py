@@ -9,9 +9,6 @@ from loguru import logger
 
 from src.api.models import SystemPriceRecord, ImbalanceRecord
 
-
-logger.add("api_errors.log", rotation="10 MB", level="WARNING")
-
 class ApiClient:
     """Async BMRS API client"""
     def __init__(

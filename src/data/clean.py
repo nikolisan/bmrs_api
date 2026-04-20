@@ -7,8 +7,6 @@ from loguru import logger
 
 from src.api.models import SystemPriceRecord, ImbalanceRecord
 
-logger.add("data_clean.log", rotation="10 MB", level="WARNING")
-
 
 def _expected_periods(settlement_date: datetime) -> int:
     """
@@ -109,7 +107,7 @@ def create_IIV_dataframe(records: list[ImbalanceRecord], target_date: str) -> pd
 
 
 def merge_dataframes(prices_df: pd.DataFrame, iiv_df: pd.DataFrame) -> pd.DataFrame:
-    
+
     merged_df = prices_df.join(iiv_df, how='left')
     
     return merged_df
