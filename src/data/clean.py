@@ -14,7 +14,7 @@ def _expected_periods(settlement_date: datetime) -> int:
     Returns 48 for normal days, 46 for March and 48 October BST shift.
     """
     if isinstance(settlement_date, str):
-        settlement_date = datetime.strptime("%Y-%m-%d")
+        settlement_date = datetime.strptime(settlement_date, "%Y-%m-%d")
         
     start = datetime.combine(settlement_date, time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
     end = datetime.combine(settlement_date + timedelta(days=1), time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
@@ -78,6 +78,24 @@ def create_system_price_dataframe(settlement_periods: list[SystemPriceRecord]) -
 
 
 def create_IIV_dataframe(records: list[ImbalanceRecord], target_date: str) -> pd.DataFrame:
+    """
+    Cleans and aligns API Indicated Imbalance Volume (IIV) data from the IMBALNGC dataset.
+
+    Transforms raw API records into a continuous daily time series.
+    Filters to the target settlement date, deduplicates by keeping the latest record per settlement period (by publishTime),
+    drops the 'dataset' and 'boundary' columns, and reindexes to the expected period count for the day (46, 48, or 50 for BST shifts).
+    Missing periods are left as NaN (not interpolated).
+
+    Args:
+        records: A list of ImbalanceRecord objects containing IIV data.
+        target_date: The settlement date to filter records by, in 'YYYY-MM-DD' format.
+
+    Returns:
+        pd.DataFrame: A DataFrame indexed by 'settlementPeriod' with one row per expected period for the day.
+
+    Raises:
+        ValueError: Input list is empty or the number of records for the target date exceeds the expected period count.
+    """
     if not records:
         raise ValueError(f"No Imbalance Records provided.")
 
@@ -90,6 +108,7 @@ def create_IIV_dataframe(records: list[ImbalanceRecord], target_date: str) -> pd
     df = df.drop_duplicates(subset=["settlementPeriod"], keep="last")
     df = df.set_index("settlementPeriod")
     df = df.sort_index()
+    df = df.drop(columns=["dataset", "boundary"], errors="ignore")
 
     _expected = _expected_periods(target_date)
 
@@ -107,7 +126,9 @@ def create_IIV_dataframe(records: list[ImbalanceRecord], target_date: str) -> pd
 
 
 def merge_dataframes(prices_df: pd.DataFrame, iiv_df: pd.DataFrame) -> pd.DataFrame:
-
-    merged_df = prices_df.join(iiv_df, how='left')
-    
+    merged_df = pd.merge(
+        prices_df, iiv_df,
+        left_index=True, right_index=True,
+        how="left", suffixes=("", "_iiv"),
+    )
     return merged_df

@@ -2,10 +2,11 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from src.api.models import SystemPriceRecord, ImbalanceRecord
-from src.data.clean import _expected_periods, create_system_price_dataframe
+from src.data.clean import (_expected_periods, create_IIV_dataframe, create_system_price_dataframe, merge_dataframes)
 
 FIXTURES = Path(__file__).parent
 
@@ -99,13 +100,50 @@ def test_october_bst_50_periods():
 
 # IIV Testing
 
+def test_iiv_empty_raises():
+    with pytest.raises(ValueError):
+        create_IIV_dataframe([], "2026-02-01")
+
+
 def test_iiv_deduplication_keeps_latest():
-    records = [_make_record(settlementPeriod=sp) for sp in range(1, 49)]
-    records.append(_make_record(
+    records = [_make_iiv_record(settlementPeriod=sp) for sp in range(1, 49)]
+    records.append(_make_iiv_record(
         settlementPeriod=1,
-        systemSellPrice=99.0,
-        systemBuyPrice=99.0,
+        imbalance=999.0,
         publishTime=datetime(2026, 2, 1, 3, 0, tzinfo=timezone.utc),
     ))
-    df = create_system_price_dataframe(records)
-    assert df.loc[1, "systemSellPrice"] == 99.0
+    df = create_IIV_dataframe(records, "2026-02-01")
+    assert df.loc[1, "imbalance"] == 999.0
+
+
+def test_iiv_drop_non_target_date():
+    records = [_make_iiv_record(settlementPeriod=sp) for sp in range(1, 49)]
+    records.append(_make_iiv_record(
+        settlementDate=date(2026, 2, 2),
+        settlementPeriod=1,
+        imbalance=123.0,
+    ))
+    df = create_IIV_dataframe(records, "2026-02-01")
+    assert len(df) == 48
+    assert df.loc[1, "imbalance"] == 500.0
+
+
+def test_iiv_missing_periods_reindexed():
+    records = [_make_iiv_record(settlementPeriod=sp) for sp in range(1, 48)]  # SP 48 missing
+    df = create_IIV_dataframe(records, "2026-02-01")
+    assert len(df) == 48
+    assert pd.isna(df.loc[48, "imbalance"])
+
+
+# merge_dataframes tests
+
+def test_merge_adds_imbalance_column():
+    sp_records = [_make_record(settlementPeriod=sp) for sp in range(1, 49)]
+    iiv_records = [_make_iiv_record(settlementPeriod=sp, imbalance=float(sp)) for sp in range(1, 49)]
+    prices_df = create_system_price_dataframe(sp_records)
+    iiv_df = create_IIV_dataframe(iiv_records, "2026-02-01")
+    merged = merge_dataframes(prices_df, iiv_df)
+    assert len(merged) == 48
+    assert "imbalance" in merged.columns
+    assert "systemSellPrice" in merged.columns
+    assert merged.loc[5, "imbalance"] == 5.0

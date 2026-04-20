@@ -31,11 +31,12 @@ def compute_daily_metrics(df: pd. DataFrame, settlement_date: date) -> dict[str,
         interpolated = df.index[df["is_interpolated"]].to_list()
 
     return {
-        "settlement_date": settlement_date.strftime("%Y-%m-%d"),
+        "settlement_date": settlement_date,
+        "total_periods": len(df),
         "total_cashflow": float(cashflow.sum()),
         "total_turnover": float(turnover),
         "unit_rate_gbp_per_mwh": unit_rate,
-        "pct_periods_long": float(system_long.mean()),
-        "pct_periods_short": float(system_short.mean()),
+        "pct_periods_long": float(system_long.mean()*100),
+        "pct_periods_short": float(system_short.mean()*100),
         "periods_interpolated": interpolated
     }

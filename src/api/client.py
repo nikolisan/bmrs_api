@@ -80,7 +80,11 @@ class ApiClient:
 
 
     async def fetch_system_prices(self, date: str) -> list[SystemPriceRecord]:
+        """Function to fetch the System Prices for the requested date."""
         endpoint = f"/balancing/settlement/system-prices/{date}"
+
+        logger.info(f"{endpoint}: Fetching system prices for {date}.")
+
         resp_json = await self._get_with_retry(endpoint, {"format": "json"})
         return [SystemPriceRecord.model_validate(sp) for sp in resp_json.get("data", [])]
     
@@ -93,8 +97,9 @@ class ApiClient:
         """
         
         endpoint = "/datasets/IMBALNGC"
+        logger.info(f"{endpoint}: Fetching IIV for {date}.")
 
-        _date: datetime = datetime.strptime("%Y-%m-%d")
+        _date: datetime = datetime.strptime(date, "%Y-%m-%d")
         fetch_date: datetime = _date - timedelta(days=1)
         fetch_date_str: str = fetch_date.strftime("%Y-%m-%d")
 
@@ -109,5 +114,5 @@ class ApiClient:
         }
 
         # Reuse the robust retry logic from the base class
-        resp_json = await self._get_with_retry("endpoint", params)
+        resp_json = await self._get_with_retry(endpoint, params)
         return [ImbalanceRecord.model_validate(item) for item in resp_json.get("data", [])]
