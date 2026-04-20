@@ -15,14 +15,28 @@ def _expected_periods(settlement_date: datetime) -> int:
     Helper function to calculate the expected number of 30min periods in a day.
     Returns 48 for normal days, 46 for March and 48 October BST shift.
     """
-
     start = datetime.combine(settlement_date, time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
     end = datetime.combine(settlement_date + timedelta(days=1), time.min, tzinfo=ZoneInfo.no_cache("Europe/London"))
     return int((end - start).total_seconds() // 1800)
 
 
 def create_system_price_dataframe(settlement_periods: list[SystemPriceRecord]) -> pd.DataFrame:
+    """
+    Cleans, aligns, and interpolates API system price data.
 
+    Transforms raw API records into a continuous daily time series.
+    It performs reindexing to handle missing periods and adjusts the expected row count for BST clock changes (46, 48, or 50 periods).
+
+    Args:
+        settlement_periods: A list of SystemPriceRecord objects containing price and volume data for a specific date.
+
+    Returns:
+        pd.DataFrame: A DataFrame indexed by 'settlementPeriod' with missing values filled via linear interpolation and an 'is_interpolated' flag.
+    
+    Raises:
+        ValueError: Input list is empty or the len of the list is more than the expected.
+    """
+    
     if not settlement_periods:
         raise ValueError(f"No settlement periods provided.")
     
