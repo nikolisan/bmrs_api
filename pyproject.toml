@@ -9,6 +9,7 @@ dependencies = [
     "loguru>=0.7.3",
     "pandas>=3.0.2",
     "pydantic>=2.13.2",
+    "tzdata>=2026.1",
 ]
 
 [dependency-groups]
